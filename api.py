@@ -1,86 +1,176 @@
-from datetime import datetime
+"""
+WEEK 4 COURSEWORK
+-----------------
+Module Name: api.py
+
+Description:
+This py file is designed to act as a server to 
+a social news API. Functionalities include 
+• Searching for new articles via GET requests, 
+• Adding new articles via POST requests, 
+• Editing existing articles via PATCH requests, 
+• Deleting existing articles via DELETE requests.
+
+This project incorporates REST architecture into the API,
+and is designed to be run within a virtual environment, 
+the modules of which are included in requirements.txt
+
+Author: Howard Man
+"""
+
+
 import psycopg2
-from flask import Flask, current_app, jsonify, request
-import json
+import psycopg2.extras
+from datetime import datetime
+from flask import abort, Flask, current_app, jsonify, request
+from psycopg2 import sql
 
 
 app = Flask(__name__)
 
 
-def loads_stories(filename: str) -> list[dict]:
-    file = open(filename, "r")
-    content = file.read()
-    file.close()
-    return json.loads(content)
+def get_db_connection():
+    """Creates a connection from our API to the social_news database"""
+    return psycopg2.connect("dbname=social_news user=howardman host=localhost")
 
 
-def get_current_id(stories: list[dict]) -> int:
-    id = len(stories) + 1
-    return id
+def loads_stories(conn, sort_by: str, order_by: str, search: str) -> list[dict[str, any]]:
+    """
+    Loads the content within the stories database,
+    with an option for customising sort, order, and search
+    """
+
+    if search is None:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(sql.SQL("""SELECT * FROM stories ORDER BY {} {}""")
+                    .format(sql.Identifier(sort_by), sql.SQL(order_by))
+                    )
+
+    else:
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(sql.SQL("""SELECT * FROM stories WHERE title ILIKE %{}%
+                            ORDER BY {} {}""")
+                    .format(sql.Identifier(search), sql.SQL(sort_by), sql.SQL(order_by))
+                    )
+
+    rows = cur.fetchall()
+    conn.commit()
+    cur.close()
+    return rows
 
 
-def search_story_results(stories: list[dict],
-                         search: str) -> list:
-    result = [story for story in stories
-              if search in story["title"]]
+def get_highest_id(conn) -> list[dict[str, any]]:
+    """Returns the highest id number within a list of stories"""
+    sort_by = 'id'
+    order_by = 'DESC'
 
-    return result
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(sql.SQL("""SELECT id FROM stories ORDER BY {} {} LIMIT 1""")
+                .format(sql.Identifier(sort_by), sql.SQL(order_by))
+                )
 
-
-def create_new_story(stories: list[dict], url: str,
-                     title: str) -> dict:
-    new_story = {
-        "score": 0,
-        "created_at": datetime.strftime(
-            datetime.now(), "%a, %d %b %Y %X %Z"),
-        "updated_at": datetime.strftime(
-            datetime.now(), "%a, %d %b %Y %X %Z"),
-        "id": get_current_id(stories),
-        "url": url,
-        "title": title
-    }
-
-    return new_story
+    rows = cur.fetchone()
+    conn.commit()
+    cur.close()
+    return rows[0]["id"]
 
 
-def get_order_sort_search(output: list, sorting_criteria: str,
-                          order: str = "ascending") -> list:
-    if order is None or order == "ascending":
-        search_result = sorted(output,
-                               key=lambda x:
-                               x[sorting_criteria]
-                               )
+def post_new_story(conn, url: str, title: str) -> list[dict[str, any]]:
+    """Adds new story into social_news database"""
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    current_datetime = datetime.strftime(datetime.now(), "%a, %d %b %Y %X %Z")
 
-    elif order == "descending":
-        search_result = sorted(output,
-                               key=lambda x:
-                               x[sorting_criteria],
-                               reverse=True)
+    cur.execute(sql.SQL("""INSERT INTO stories(title, url, score, created_at, updated_at)
+                        VALUES ({}, {}, 0, {}, {})""").format(sql.SQL(title), sql.SQL(url),
+                                                              sql.SQL(current_datetime), sql.SQL(
+                                                                  current_datetime)
+                                                              )
+                )
 
-    return search_result
+    rows = cur.fetchall()
+    conn.commit()
+    cur.close()
+    return rows
 
 
-def update_story_score(direction: str,
-                       score: int) -> None:
+def valid_input_id_test(conn, id):
+    max_id = get_highest_id(conn)
+    if not isinstance(id, int):
+        return "id_not_int"
+    if id <= 0 or id > max_id:
+        return "id_not_in_range"
+    return True
+
+
+def patch_existing_story(conn, url: str, title: str, id) -> list[dict[str, any]]:
+    """Edits the url and title of a row in the stories table via a PATCH request"""
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cur.execute(sql.SQL("""UPDATE stories
+                        SET url = %s,
+                        title = %s
+                        WHERE id = %s"""), (url, title, id))
+
+    rows = cur.fetchall()
+    conn.commit()
+    cur.close()
+    return rows
+
+
+def delete_existing_story(conn, id):
+    """Deletes an existing story in stories database"""
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cur.execute(sql.SQL("""DELETE FROM stories
+                        WHERE id = %s"""), (id, )
+                )
+
+    rows = cur.fetchall()
+    conn.commit()
+    cur.close()
+    return rows
+
+
+def find_story_by_id(conn, id):
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cur.execute(sql.SQL("""SELECT * FROM stories WHERE id = %s"""),
+                (id, )
+                )
+
+    rows = cur.fetchone()
+    conn.commit()
+    cur.close()
+    return rows
+
+
+def update_story_score(conn, id, direction: str, score: int) -> None:
+    """
+    Updates the score of a story to the stories table depending 
+    on the direction of the vote
+    """
     if direction == "up":
         score += 1
     else:
         score -= 1
-    last_updated = datetime.strftime(
-        datetime.now(),
-        "%a, %d %b %Y %X %Z")
+    last_updated = datetime.strftime(datetime.now(),
+                                     "%a, %d %b %Y %X %Z")
 
-    return (score, last_updated)
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
+    cur.execute(sql.SQL("""UPDATE stories
+                        SET score = %s,
+                        updated_at = %s
+                        WHERE id = %s"""), (score, last_updated, id))
 
-def get_sorting_criteria_from_sort(sort: str) -> str | None:
-    sort_dict = {"title": "title", "score": "score",
-                 "created": "created_at", "modified": "modified_at"}
+    rows = cur.fetchone()
+    conn.commit()
+    cur.close()
+    return rows
 
-    if sort is None:
-        return "created_at"
-
-    return sort_dict.get(sort)
+# =========================================================================================
+# ================================= API ROUTES ============================================
+# =========================================================================================
 
 
 @app.route("/", methods=["GET"])
@@ -90,6 +180,7 @@ def index():
 
 @app.route("/add", methods=["GET"])
 def addstory():
+    """Adds story via frontend"""
     return current_app.send_static_file("./addstory/index.html")
 
 
@@ -105,68 +196,37 @@ def get_stories():
     searches up for stories with a given title and orders them.
     POST: Adds a new story onto the API.
     """
-    args = request.args.to_dict()
-    search = args.get("search")
-    sort = args.get("sort")
-    order = args.get("order")
-
     if request.method == "GET":
+        sort_by = request.args.get('sort_by', default='id')
+        order_by = request.args.get('order_by', default='ASC').upper()
+        search = request.args.get('search', default=None)
 
-        stories = loads_stories("stories.json")
+        conn = get_db_connection()
+        data = loads_stories(conn, sort_by, order_by, search)
+        if len(data) == 0:
+            return jsonify({"error": True,
+                            "message": "No results found for your search."}), 400
 
-        # Consider the case where we have no 'search' query parameter.
-        if search is None:
-            # Consider the edge case where there are no stories.
-            if len(stories) == 0:
-                return jsonify({"error": True, "message":
-                                "No stories were found"
-                                }), 404
+        return data, 200
 
-            output = stories
-
-        else:
-            result = search_story_results(stories, search)
-
-            if len(result) == 0:
-                return jsonify({"error": True, "message":
-                                "No stories were found"
-                                }), 404
-
-            output = result
-
-        # Consider the 'sort' query parameter
-        sorting_criteria = get_sorting_criteria_from_sort(sort)
-
-        if sorting_criteria is None:
-            return jsonify({"error": True, "message":
-                            "'sort' query parameter takes values 'title', 'score', 'created', 'modified'"
-                            }), 400
-
-        if order is None or order in {"ascending", "descending"}:
-            return jsonify(get_order_sort_search
-                           (output, sorting_criteria, order)
-                           ), 200
-
-        else:
-            return jsonify({"error": True, "message":
-                            "'order' query parameter only takes values 'ascending', 'descending'"
-                            }), 400
-
-    elif request.method == "POST":
+    if request.method == "POST":
         data = request.json
+        url = data.get("url")
+        title = data.get("title")
+        print(url, title)
 
-        if (data.get("url") or data.get("title")) == None:
+        if url is None or title is None:
             return jsonify(
-                {"error": True, "message":
-                 "'title' and 'url' of new story need to be specified"
-                 }), 400
+                {"error": True,
+                 "message": "'title' and 'url' of new story need to be specified"}), 400
 
-        stories = loads_stories("stories.json")
+        conn = get_db_connection()
+        data = post_new_story(conn, url, title)
 
-        stories.append(create_new_story(
-            stories, data.get("url"), data.get("title")))
+        return data, 201
 
-        return jsonify(stories), 201
+    return jsonify(
+        {"error": True, "message": "Only methods GET and POST are available."}), 404
 
 
 @app.route("/stories/<int:id>", methods=["PATCH", "DELETE"])
@@ -175,72 +235,66 @@ def existing_stories_id(id):
     PATCH: Edits an existing story on the API
     DELETE: Deletes an existing story on the API
     """
-
-    stories = loads_stories("stories.json")
-
-    if id <= 0 or id > len(stories):
-        return jsonify({"error": True, "message":
-                        f"'id' can only be between 0 and {len(stories)}"
-                        }), 404
+    conn = get_db_connection()
+    if not valid_input_id_test(conn, id):
+        return jsonify({"error": True, "message": "Inputted 'id' not valid"}), 400
 
     if request.method == "PATCH":
-
         data = request.json
+        url = data.get("url")
+        title = data.get("title")
 
-        if (data.get("url") or data.get("title")) is None:
-            return jsonify({"error": True, "message":
-                            "'title' and 'url' of new story need to be specified"
-                            }), 400
+        if url is None or title is None:
+            return jsonify(
+                {"error": True, "message": "'title' and 'url' of new story need to be specified"}), 400
 
-        for story in stories:
-            if story["id"] == id:
-                story["url"] = data.get("url")
-                story["title"] = data.get("title")
+        data = patch_existing_story(url, title, id)
 
-        return jsonify(stories), 201
+        return data, 201
 
-    elif request.method == "DELETE":
+    if request.method == "DELETE":
+        data = delete_existing_story(conn, id)
 
-        for story in stories:
-            if story["id"] == id:
-                stories.remove(story)
+        return data, 200
 
-        return jsonify(stories), 200
+    return jsonify(
+        {"error": True, "message": "Only methods PATCH AND DELETE are available."}), 404
 
 
 @app.route("/stories/<int:id>/votes", methods=["POST"])
 def post_vote_stories(id):
     """Raises the vote of a story by 1"""
-
-    data = request.json
-    stories = loads_stories("stories.json")
-
-    if id <= 0 or id > len(stories):
-        return jsonify({"error": True, "message":
-                        f"'id' can only be between 0 and {len(stories)}"
-                        }), 404
+    conn = get_db_connection()
+    if valid_input_id_test(conn, id) == "id_not_int":
+        return jsonify(
+            {"error": True, "message": "'id' needs to be an integer"}), 400
+    if valid_input_id_test(conn, id) == "id_not_in_range":
+        return jsonify(
+            {"error": True, "message": "No stories with this id"}), 400
 
     if request.method == "POST":
+        data = request.json
+        direction = data.get("direction")
 
-        for story in stories:
-            if story["id"] == id:
-                direction = data["direction"]
-                score = story["score"]
-                if direction not in {"up", "down"}:
-                    return jsonify({"error": True,
-                                    "message":
-                                    "'direction' only takes 'up', 'down' as values"
-                                    })
-                if direction == "down" and score == 0:
-                    return jsonify({"error": True,
-                                    "message":
-                                    "Can't downvote for a story with a score of 0"
-                                    }), 400
-                story["score"] = update_story_score[0]
-                story["updated_at"] = update_story_score[1]
+        if direction not in {"up", "down"}:
+            return jsonify({
+                "error": True, "message": "'direction' only takes 'up', 'down' as values"
+            }), 400
 
-    return jsonify(stories), 201
+        story = find_story_by_id[0]
+        score = story.get('score')
+
+        if direction == "down" and score == 0:
+            return jsonify({"error": True, "message":
+                            "Can't downvote for a story with a score of 0"}), 400
+
+        data = update_story_score(conn, id, direction, score)
+
+        return data, 200
+
+    return {"error": True, "message": "Only method POST is available."}, 404
 
 
 if __name__ == "__main__":
+
     app.run(debug=True, host="0.0.0.0", port=5000)
