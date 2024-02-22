@@ -21,20 +21,36 @@ Author: Howard Man
 
 import psycopg2
 import psycopg2.extras
-from datetime import datetime
-from flask import abort, Flask, current_app, jsonify, request
+from flask import Flask, current_app, jsonify, request
 from psycopg2 import sql
+from psycopg2.extensions import connection
 
 
 app = Flask(__name__)
 
 
-def get_db_connection():
+def get_db_connection() -> connection:
     """Creates a connection from our API to the social_news database"""
     return psycopg2.connect("dbname=social_news user=howardman host=localhost")
 
 
-def loads_stories(conn, sort_by: str, order_by: str, search: str) -> list[dict[str, any]]:
+def fetch_scores(conn: connection) -> list[dict[str, any]]:
+    """
+    Fetches scores for all stories whose story_id are 
+    in the votes table
+    """
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cur.execute(sql.SQL("""SELECT stories.*, SUM(CASE direction WHEN 'up' THEN 1 ELSE -1 END)
+                        AS score
+                        FROM stories
+                        JOIN votes
+                        ON (stories.id = votes.story_id) 
+                        WHERE stories.id = votes.story_id
+                        GROUP BY stories.id"""))
+
+
+def loads_stories(conn: connection, sort_by: str, order_by: str, search: str) -> list[dict[str, any]]:
     """
     Loads the content within the stories database,
     with an option for customising sort, order, and search
@@ -42,16 +58,17 @@ def loads_stories(conn, sort_by: str, order_by: str, search: str) -> list[dict[s
 
     if search is None:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
         cur.execute(sql.SQL("""SELECT * FROM stories ORDER BY {} {}""")
-                    .format(sql.Identifier(sort_by), sql.SQL(order_by))
-                    )
+                    .format(sql.Identifier(sort_by), sql.SQL(order_by)))
 
     else:
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-        cur.execute(sql.SQL("""SELECT * FROM stories WHERE title ILIKE %{}%
-                            ORDER BY {} {}""")
-                    .format(sql.Identifier(search), sql.SQL(sort_by), sql.SQL(order_by))
-                    )
+
+        cur.execute(
+            sql.SQL("""SELECT * FROM stories 
+                    WHERE title ILIKE '%{}%' 
+                    ORDER BY {} {}""").format(sql.SQL(search), sql.Identifier(sort_by), sql.SQL(order_by)))
 
     rows = cur.fetchall()
     conn.commit()
@@ -59,7 +76,7 @@ def loads_stories(conn, sort_by: str, order_by: str, search: str) -> list[dict[s
     return rows
 
 
-def get_highest_id(conn) -> list[dict[str, any]]:
+def get_highest_id(conn: connection) -> int:
     """Returns the highest id number within a list of stories"""
     sort_by = 'id'
     order_by = 'DESC'
@@ -72,28 +89,30 @@ def get_highest_id(conn) -> list[dict[str, any]]:
     rows = cur.fetchone()
     conn.commit()
     cur.close()
-    return rows[0]["id"]
+    return rows.get("id")
 
 
-def post_new_story(conn, url: str, title: str) -> list[dict[str, any]]:
-    """Adds new story into social_news database"""
+def post_new_story(conn: connection, url: str, title: str) -> list[dict[str, any]]:
+    """Adds new story into social_news database, returning the updated
+    social_news database"""
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    current_datetime = datetime.strftime(datetime.now(), "%a, %d %b %Y %X %Z")
 
-    cur.execute(sql.SQL("""INSERT INTO stories(title, url, score, created_at, updated_at)
-                        VALUES ({}, {}, 0, {}, {})""").format(sql.SQL(title), sql.SQL(url),
-                                                              sql.SQL(current_datetime), sql.SQL(
-                                                                  current_datetime)
-                                                              )
+    cur.execute(sql.SQL("""INSERT INTO stories (title, url, created_at, updated_at)
+                        VALUES (%s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"""
+                        ), (title, url)
                 )
 
+    cur.execute(sql.SQL("""SELECT * FROM stories"""))
+
     rows = cur.fetchall()
+    # print(rows)
     conn.commit()
     cur.close()
     return rows
 
 
-def valid_input_id_test(conn, id):
+def valid_input_id_test(conn: connection, id: int) -> bool:
+    """Criteria for checking whether a story id is valid"""
     max_id = get_highest_id(conn)
     if not isinstance(id, int):
         return "id_not_int"
@@ -102,7 +121,7 @@ def valid_input_id_test(conn, id):
     return True
 
 
-def patch_existing_story(conn, url: str, title: str, id) -> list[dict[str, any]]:
+def patch_existing_story(conn: connection, url: str, title: str, id: int) -> list[dict[str, any]]:
     """Edits the url and title of a row in the stories table via a PATCH request"""
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -111,13 +130,15 @@ def patch_existing_story(conn, url: str, title: str, id) -> list[dict[str, any]]
                         title = %s
                         WHERE id = %s"""), (url, title, id))
 
+    cur.execute(sql.SQL("""SELECT * FROM stories"""))
+
     rows = cur.fetchall()
     conn.commit()
     cur.close()
     return rows
 
 
-def delete_existing_story(conn, id):
+def delete_existing_story(conn: connection, id: int) -> list[dict[str, any]]:
     """Deletes an existing story in stories database"""
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
@@ -125,13 +146,15 @@ def delete_existing_story(conn, id):
                         WHERE id = %s"""), (id, )
                 )
 
+    cur.execute(sql.SQL("""SELECT * FROM stories"""))
+
     rows = cur.fetchall()
     conn.commit()
     cur.close()
     return rows
 
 
-def find_story_by_id(conn, id):
+def find_story_by_id(conn: connection, id: int):
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     cur.execute(sql.SQL("""SELECT * FROM stories WHERE id = %s"""),
@@ -144,29 +167,34 @@ def find_story_by_id(conn, id):
     return rows
 
 
-def update_story_score(conn, id, direction: str, score: int) -> None:
+def update_story_date(conn: connection, id: int) -> list[dict[str, any]]:
     """
-    Updates the score of a story to the stories table depending 
-    on the direction of the vote
+    Updates the updated_at field of a story to the stories table 
+    after an upvote/downvote
     """
-    if direction == "up":
-        score += 1
-    else:
-        score -= 1
-    last_updated = datetime.strftime(datetime.now(),
-                                     "%a, %d %b %Y %X %Z")
 
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     cur.execute(sql.SQL("""UPDATE stories
-                        SET score = %s,
-                        updated_at = %s
-                        WHERE id = %s"""), (score, last_updated, id))
+                        updated_at = CURRENT_TIMESTAMP
+                        WHERE id = %s"""), (id, ))
 
-    rows = cur.fetchone()
+    cur.execute(sql.SQL("""SELECT * FROM stories"""))
+
+    rows = cur.fetchall()
     conn.commit()
     cur.close()
     return rows
+
+
+def create_new_votes_record(conn: connection, id: int, direction: str) -> None:
+    """Creates a new row in the votes table"""
+
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+    cur.execute(sql.SQL("""INSERT INTO votes (direction, created_at, updated_at, story_id)
+                        VALUES (%s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, %s)"""), (direction, id))
+
 
 # =========================================================================================
 # ================================= API ROUTES ============================================
@@ -230,7 +258,7 @@ def get_stories():
 
 
 @app.route("/stories/<int:id>", methods=["PATCH", "DELETE"])
-def existing_stories_id(id):
+def existing_stories_id(id: int):
     """
     PATCH: Edits an existing story on the API
     DELETE: Deletes an existing story on the API
@@ -248,7 +276,7 @@ def existing_stories_id(id):
             return jsonify(
                 {"error": True, "message": "'title' and 'url' of new story need to be specified"}), 400
 
-        data = patch_existing_story(url, title, id)
+        data = patch_existing_story(conn, url, title, id)
 
         return data, 201
 
@@ -262,7 +290,7 @@ def existing_stories_id(id):
 
 
 @app.route("/stories/<int:id>/votes", methods=["POST"])
-def post_vote_stories(id):
+def post_vote_stories(id: int):
     """Raises the vote of a story by 1"""
     conn = get_db_connection()
     if valid_input_id_test(conn, id) == "id_not_int":
@@ -281,14 +309,9 @@ def post_vote_stories(id):
                 "error": True, "message": "'direction' only takes 'up', 'down' as values"
             }), 400
 
-        story = find_story_by_id[0]
-        score = story.get('score')
+        create_new_votes_record(conn, id, direction)
 
-        if direction == "down" and score == 0:
-            return jsonify({"error": True, "message":
-                            "Can't downvote for a story with a score of 0"}), 400
-
-        data = update_story_score(conn, id, direction, score)
+        data = update_story_date(conn, id)
 
         return data, 200
 
