@@ -19,7 +19,7 @@ Author: Howard Man
 """
 
 
-import psycopg2
+import psycopg2-binary
 import psycopg2.extras
 from flask import Flask, current_app, jsonify, request
 from psycopg2 import sql
