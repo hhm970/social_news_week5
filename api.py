@@ -105,7 +105,6 @@ def post_new_story(conn: connection, url: str, title: str) -> list[dict[str, any
     cur.execute(sql.SQL("""SELECT * FROM stories"""))
 
     rows = cur.fetchall()
-    # print(rows)
     conn.commit()
     cur.close()
     return rows
@@ -196,9 +195,9 @@ def create_new_votes_record(conn: connection, id: int, direction: str) -> None:
                         VALUES (%s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, %s)"""), (direction, id))
 
 
-# =========================================================================================
-# ================================= API ROUTES ============================================
-# =========================================================================================
+# ===============================================================================================================
+# ================================= API ROUTES ==================================================================
+# ===============================================================================================================
 
 
 @app.route("/", methods=["GET"])
@@ -229,7 +228,7 @@ def get_stories():
         order_by = request.args.get('order_by', default='ASC').upper()
         search = request.args.get('search', default=None)
 
-        conn = get_db_connection()
+        # conn = get_db_connection()
         data = loads_stories(conn, sort_by, order_by, search)
         if len(data) == 0:
             return jsonify({"error": True,
@@ -241,14 +240,13 @@ def get_stories():
         data = request.json
         url = data.get("url")
         title = data.get("title")
-        print(url, title)
 
         if url is None or title is None:
             return jsonify(
                 {"error": True,
                  "message": "'title' and 'url' of new story need to be specified"}), 400
 
-        conn = get_db_connection()
+        # conn = get_db_connection()
         data = post_new_story(conn, url, title)
 
         return data, 201
@@ -263,7 +261,7 @@ def existing_stories_id(id: int):
     PATCH: Edits an existing story on the API
     DELETE: Deletes an existing story on the API
     """
-    conn = get_db_connection()
+    # conn = get_db_connection()
     if not valid_input_id_test(conn, id):
         return jsonify({"error": True, "message": "Inputted 'id' not valid"}), 400
 
@@ -292,7 +290,7 @@ def existing_stories_id(id: int):
 @app.route("/stories/<int:id>/votes", methods=["POST"])
 def post_vote_stories(id: int):
     """Raises the vote of a story by 1"""
-    conn = get_db_connection()
+    # conn = get_db_connection()
     if valid_input_id_test(conn, id) == "id_not_int":
         return jsonify(
             {"error": True, "message": "'id' needs to be an integer"}), 400
@@ -319,5 +317,5 @@ def post_vote_stories(id: int):
 
 
 if __name__ == "__main__":
-
+    conn = get_db_connection()
     app.run(debug=True, host="0.0.0.0", port=5000)
