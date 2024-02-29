@@ -34,7 +34,7 @@ def get_db_connection() -> connection:
     try:
         return psycopg2.connect("dbname=social_news user=howardman host=localhost")
     except:
-        return ConnectionError("Could not connect to the database")
+        return "error"
 
 
 def fetch_scores(conn: connection) -> list[dict[str, any]]:
@@ -226,6 +226,8 @@ def get_stories():
     searches up for stories with a given title and orders them.
     POST: Adds a new story onto the API.
     """
+    if conn == "error":
+        return jsonify({"error": "Could not connect to the server"}), 500
     if request.method == "GET":
         sort_by = request.args.get('sort_by', default='id')
         order_by = request.args.get('order_by', default='ASC').upper()
@@ -264,7 +266,9 @@ def existing_stories_id(id: int):
     PATCH: Edits an existing story on the API
     DELETE: Deletes an existing story on the API
     """
-    # conn = get_db_connection()
+    if conn == "error":
+        return jsonify({"error": "Could not connect to the server"}), 500
+
     if not valid_input_id_test(conn, id):
         return jsonify({"error": True, "message": "Inputted 'id' not valid"}), 400
 
@@ -293,7 +297,9 @@ def existing_stories_id(id: int):
 @app.route("/stories/<int:id>/votes", methods=["POST"])
 def post_vote_stories(id: int):
     """Raises the vote of a story by 1"""
-    # conn = get_db_connection()
+    if conn == "error":
+        return jsonify({"error": "Could not connect to the server"}), 500
+
     if valid_input_id_test(conn, id) == "id_not_int":
         return jsonify(
             {"error": True, "message": "'id' needs to be an integer"}), 400
