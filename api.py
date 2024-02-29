@@ -226,14 +226,16 @@ def get_stories():
     searches up for stories with a given title and orders them.
     POST: Adds a new story onto the API.
     """
-    if conn == "error":
+    try:
+        conn = get_db_connection()
+    except:
         return jsonify({"error": "Could not connect to the server"}), 500
+
     if request.method == "GET":
         sort_by = request.args.get('sort_by', default='id')
         order_by = request.args.get('order_by', default='ASC').upper()
         search = request.args.get('search', default=None)
 
-        # conn = get_db_connection()
         data = loads_stories(conn, sort_by, order_by, search)
         if len(data) == 0:
             return jsonify({"error": True,
@@ -251,7 +253,6 @@ def get_stories():
                 {"error": True,
                  "message": "'title' and 'url' of new story need to be specified"}), 400
 
-        # conn = get_db_connection()
         data = post_new_story(conn, url, title)
 
         return data, 201
@@ -266,7 +267,9 @@ def existing_stories_id(id: int):
     PATCH: Edits an existing story on the API
     DELETE: Deletes an existing story on the API
     """
-    if conn == "error":
+    try:
+        conn = get_db_connection()
+    except:
         return jsonify({"error": "Could not connect to the server"}), 500
 
     if not valid_input_id_test(conn, id):
@@ -297,7 +300,9 @@ def existing_stories_id(id: int):
 @app.route("/stories/<int:id>/votes", methods=["POST"])
 def post_vote_stories(id: int):
     """Raises the vote of a story by 1"""
-    if conn == "error":
+    try:
+        conn = get_db_connection()
+    except:
         return jsonify({"error": "Could not connect to the server"}), 500
 
     if valid_input_id_test(conn, id) == "id_not_int":
@@ -326,5 +331,5 @@ def post_vote_stories(id: int):
 
 
 if __name__ == "__main__":
-    conn = get_db_connection()
+
     app.run(debug=True, host="0.0.0.0", port=5000)
