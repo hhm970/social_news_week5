@@ -319,5 +319,5 @@ if __name__ == "__main__":
         conn = get_db_connection()
     except:
         print("Not able to establish a connection to database.")
-
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    else:
+        app.run(debug=True, host="0.0.0.0", port=5000)
