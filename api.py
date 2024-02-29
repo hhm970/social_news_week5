@@ -31,10 +31,7 @@ app = Flask(__name__)
 
 def get_db_connection() -> connection:
     """Creates a connection from our API to the social_news database"""
-    try:
-        return psycopg2.connect("dbname=social_news user=howardman host=localhost")
-    except:
-        return "error"
+    return psycopg2.connect("dbname=social_news user=howardman host=localhost")
 
 
 def fetch_scores(conn: connection) -> list[dict[str, any]]:
