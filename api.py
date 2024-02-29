@@ -175,7 +175,7 @@ def update_story_date(conn: connection, id: int) -> list[dict[str, any]]:
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     cur.execute(sql.SQL("""UPDATE stories
-                        updated_at = CURRENT_TIMESTAMP
+                        SET updated_at = CURRENT_TIMESTAMP
                         WHERE id = %s"""), (id, ))
 
     cur.execute(sql.SQL("""SELECT * FROM stories"""))

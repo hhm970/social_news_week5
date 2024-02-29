@@ -18,7 +18,7 @@ def test_database_connection():
         "DB_HOST": "localhost",
         "DB_PORT": 5000,
         "DB_USER": "howardman",
-        "DB_NAME": "social_news",
+        "DB_NAME": "social_news"
     }
 
     conn = get_db_connection(test_config)
