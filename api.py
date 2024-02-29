@@ -1,5 +1,5 @@
 """
-WEEK 4 COURSEWORK
+WEEK 6 COURSEWORK
 -----------------
 Module Name: api.py
 
@@ -21,6 +21,8 @@ Author: Howard Man
 
 import psycopg2
 import psycopg2.extras
+from os import environ  # Gives the program access to the environment variables
+from dotenv import load_dotenv  # Loads variables from a file into the environment
 from flask import Flask, current_app, jsonify, request
 from psycopg2 import sql
 from psycopg2.extensions import connection
@@ -31,7 +33,13 @@ app = Flask(__name__)
 
 def get_db_connection() -> connection:
     """Creates a connection from our API to the social_news database"""
-    return psycopg2.connect("dbname=social_news user=howardman host=localhost")
+    return psycopg2.connect(
+        user=environ["DATABASE_USERNAME"],
+        password=environ["DATABASE_PASSWORD"],
+        host=environ["DATABASE_IP"],
+        port=environ["DATABASE_PORT"],
+        database=environ["DATABASE_NAME"]
+    )
 
 
 def fetch_scores(conn: connection) -> list[dict[str, any]]:
@@ -320,4 +328,5 @@ if __name__ == "__main__":
     except:
         print("Not able to establish a connection to database.")
     else:
+        load_dotenv()
         app.run(debug=True, host="0.0.0.0", port=5000)
