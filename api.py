@@ -223,40 +223,34 @@ def get_stories():
     searches up for stories with a given title and orders them.
     POST: Adds a new story onto the API.
     """
-    try:
-        conn = get_db_connection()
-    except:
-        return jsonify({"error": "Could not connect to the server"}), 500
+    if request.method == "GET":
+        sort_by = request.args.get('sort_by', default='id')
+        order_by = request.args.get('order_by', default='ASC').upper()
+        search = request.args.get('search', default=None)
 
-    else:
-        if request.method == "GET":
-            sort_by = request.args.get('sort_by', default='id')
-            order_by = request.args.get('order_by', default='ASC').upper()
-            search = request.args.get('search', default=None)
+        data = loads_stories(conn, sort_by, order_by, search)
+        if len(data) == 0:
+            return jsonify({"error": True,
+                            "message": "No results found for your search."}), 400
 
-            data = loads_stories(conn, sort_by, order_by, search)
-            if len(data) == 0:
-                return jsonify({"error": True,
-                                "message": "No results found for your search."}), 400
+        return data, 200
 
-            return data, 200
+    if request.method == "POST":
+        data = request.json
+        url = data.get("url")
+        title = data.get("title")
 
-        if request.method == "POST":
-            data = request.json
-            url = data.get("url")
-            title = data.get("title")
+        if url is None or title is None:
+            return jsonify(
+                {"error": True,
+                    "message": "'title' and 'url' of new story need to be specified"}), 400
 
-            if url is None or title is None:
-                return jsonify(
-                    {"error": True,
-                     "message": "'title' and 'url' of new story need to be specified"}), 400
+        data = post_new_story(conn, url, title)
 
-            data = post_new_story(conn, url, title)
+        return data, 201
 
-            return data, 201
-
-        return jsonify(
-            {"error": True, "message": "Only methods GET and POST are available."}), 404
+    return jsonify(
+        {"error": True, "message": "Only methods GET and POST are available."}), 404
 
 
 @app.route("/stories/<int:id>", methods=["PATCH", "DELETE"])
@@ -265,71 +259,65 @@ def existing_stories_id(id: int):
     PATCH: Edits an existing story on the API
     DELETE: Deletes an existing story on the API
     """
-    try:
-        conn = get_db_connection()
-    except:
-        return jsonify({"error": "Could not connect to the server"}), 500
 
-    else:
-        if not valid_input_id_test(conn, id):
-            return jsonify({"error": True, "message": "Inputted 'id' not valid"}), 400
+    if not valid_input_id_test(conn, id):
+        return jsonify({"error": True, "message": "Inputted 'id' not valid"}), 400
 
-        if request.method == "PATCH":
-            data = request.json
-            url = data.get("url")
-            title = data.get("title")
+    if request.method == "PATCH":
+        data = request.json
+        url = data.get("url")
+        title = data.get("title")
 
-            if url is None or title is None:
-                return jsonify(
-                    {"error": True, "message": "'title' and 'url' of new story need to be specified"}), 400
+        if url is None or title is None:
+            return jsonify(
+                {"error": True, "message": "'title' and 'url' of new story need to be specified"}), 400
 
-            data = patch_existing_story(conn, url, title, id)
+        data = patch_existing_story(conn, url, title, id)
 
-            return data, 201
+        return data, 201
 
-        if request.method == "DELETE":
-            data = delete_existing_story(conn, id)
+    if request.method == "DELETE":
+        data = delete_existing_story(conn, id)
 
-            return data, 200
+        return data, 200
 
-        return jsonify(
-            {"error": True, "message": "Only methods PATCH AND DELETE are available."}), 404
+    return jsonify(
+        {"error": True, "message": "Only methods PATCH AND DELETE are available."}), 404
 
 
 @app.route("/stories/<int:id>/votes", methods=["POST"])
 def post_vote_stories(id: int):
     """Raises the vote of a story by 1"""
-    try:
-        conn = get_db_connection()
-    except:
-        return jsonify({"error": "Could not connect to the server"}), 500
 
-    else:
-        if valid_input_id_test(conn, id) == "id_not_int":
-            return jsonify(
-                {"error": True, "message": "'id' needs to be an integer"}), 400
-        if valid_input_id_test(conn, id) == "id_not_in_range":
-            return jsonify(
-                {"error": True, "message": "No stories with this id"}), 400
+    if valid_input_id_test(conn, id) == "id_not_int":
+        return jsonify(
+            {"error": True, "message": "'id' needs to be an integer"}), 400
+    if valid_input_id_test(conn, id) == "id_not_in_range":
+        return jsonify(
+            {"error": True, "message": "No stories with this id"}), 400
 
-        if request.method == "POST":
-            data = request.json
-            direction = data.get("direction")
+    if request.method == "POST":
+        data = request.json
+        direction = data.get("direction")
 
-            if direction not in {"up", "down"}:
-                return jsonify({
-                    "error": True, "message": "'direction' only takes 'up', 'down' as values"
-                }), 400
+        if direction not in {"up", "down"}:
+            return jsonify({
+                "error": True, "message": "'direction' only takes 'up', 'down' as values"
+            }), 400
 
-            create_new_votes_record(conn, id, direction)
+        create_new_votes_record(conn, id, direction)
 
-            data = update_story_date(conn, id)
+        data = update_story_date(conn, id)
 
-            return data, 200
+        return data, 200
 
-        return {"error": True, "message": "Only method POST is available."}, 404
+    return {"error": True, "message": "Only method POST is available."}, 404
 
 
 if __name__ == "__main__":
+    try:
+        conn = get_db_connection()
+    except:
+        print("Not able to establish a connection to database.")
 
     app.run(debug=True, host="0.0.0.0", port=5000)

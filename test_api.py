@@ -9,10 +9,10 @@ from unittest.mock import patch, MagicMock
 # Testing the GET request for "/stories" endpoint
 @patch("api.get_database_connection")
 @patch("api.loads_stories")
-def test_stories_load_successfully(fake_loads_stories, fake_database_connection,
+def test_stories_load_successfully(fake_loads_stories,
                                    test_database_connection, mock_stories, test_client):
 
-    fake_database_connection = test_database_connection
+    conn = test_database_connection
     fake_loads_stories.fetchall().return_value = mock_stories
 
     response = test_client.get("/stories")
