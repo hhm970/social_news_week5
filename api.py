@@ -37,7 +37,7 @@ def get_db_connection() -> connection:
         user=environ["DATABASE_USERNAME"],
         host=environ["DATABASE_IP"],
         database=environ["DATABASE_NAME"],
-        password=environ["DATABASE_PASSWORD"]
+        password=environ["DATABASE_PASSWORD"],
         port=environ["DATABASE_PORT"]
     )
     # "dbname=social_news user=howardman host=localhost"
