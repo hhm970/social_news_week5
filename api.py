@@ -35,11 +35,10 @@ def get_db_connection() -> connection:
     """Creates a connection from our API to the social_news database"""
     return psycopg2.connect(
         user=environ["DATABASE_USERNAME"],
-        password=environ["DATABASE_PASSWORD"],
         host=environ["DATABASE_IP"],
-        port=environ["DATABASE_PORT"],
         database=environ["DATABASE_NAME"]
     )
+    # "dbname=social_news user=howardman host=localhost"
 
 
 def fetch_scores(conn: connection) -> list[dict[str, any]]:
@@ -324,9 +323,10 @@ def post_vote_stories(id: int):
 
 if __name__ == "__main__":
     try:
+        print("Establishing database connection...")
+        load_dotenv()
         conn = get_db_connection()
     except:
         print("Not able to establish a connection to database.")
     else:
-        load_dotenv()
         app.run(debug=True, host="0.0.0.0", port=5000)
