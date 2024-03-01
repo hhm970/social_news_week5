@@ -36,7 +36,9 @@ def get_db_connection() -> connection:
     return psycopg2.connect(
         user=environ["DATABASE_USERNAME"],
         host=environ["DATABASE_IP"],
-        database=environ["DATABASE_NAME"]
+        database=environ["DATABASE_NAME"],
+        password=environ["DATABASE_PASSWORD"]
+        port=environ["DATABASE_PORT"]
     )
     # "dbname=social_news user=howardman host=localhost"
 
